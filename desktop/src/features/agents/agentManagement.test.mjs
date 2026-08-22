@@ -90,6 +90,56 @@ test("uses an agent's current name, never an internal profile ID", () => {
   assert.deepEqual(parseAgentManagementRequest(payload), payload);
 });
 
+test("prefills a normalized non-secret provider destination", () => {
+  const payload = {
+    type: AGENT_MANAGEMENT_REQUEST,
+    action: "update",
+    requestId: "request-run-on",
+    request: {
+      channelId: CHANNEL_ID,
+      agentName: "agentos",
+      runOn: {
+        providerId: " kubernetes ",
+        config: {
+          namespace: " buzz-agents-pilot ",
+          memory_request: "512Mi",
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(parseAgentManagementRequest(payload), {
+    ...payload,
+    request: {
+      ...payload.request,
+      runOn: {
+        providerId: "kubernetes",
+        config: {
+          namespace: "buzz-agents-pilot",
+          memory_request: "512Mi",
+        },
+      },
+    },
+  });
+});
+
+test("rejects secret-shaped provider config in a review request", () => {
+  const payload = {
+    type: AGENT_MANAGEMENT_REQUEST,
+    action: "update",
+    requestId: "request-secret",
+    request: {
+      channelId: CHANNEL_ID,
+      agentName: "agentos",
+      runOn: {
+        providerId: "kubernetes",
+        config: { api_token: "must-not-cross-the-relay" },
+      },
+    },
+  };
+  assert.equal(parseAgentManagementRequest(payload), null);
+});
+
 test("allows agents to update only personal, editable profiles", () => {
   assert.equal(
     requestTargetsEditablePersona({ isBuiltIn: false, sourceTeam: null }),

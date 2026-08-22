@@ -54,6 +54,7 @@ export function agentManagementInstanceUpdate({
   const synced = personaManagedAgentUpdate(managedAgent, persona, {
     previousPersona,
     runtimes,
+    forceRuntimeSync: Boolean(backendIntent),
   });
   if (!synced && !backendIntent) return null;
 

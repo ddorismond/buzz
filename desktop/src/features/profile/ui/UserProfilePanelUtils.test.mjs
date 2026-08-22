@@ -199,6 +199,32 @@ test("personaManagedAgentUpdate leaves runtime fields alone when runtime is unch
   );
 });
 
+test("personaManagedAgentUpdate can force repair of drifted runtime fields", () => {
+  assert.deepEqual(
+    personaManagedAgentUpdate(
+      agent({
+        name: "Fizz Prime",
+        systemPrompt: "New prompt",
+        model: "new-model",
+        envVars: { NEW_KEY: "2" },
+        agentCommand: "claude-agent-acp",
+      }),
+      persona({ runtime: "claude" }),
+      {
+        previousPersona: persona({ runtime: "claude" }),
+        runtimes: [runtime()],
+        forceRuntimeSync: true,
+      },
+    ),
+    {
+      pubkey: "deadbeef".repeat(8),
+      agentCommand: "claude",
+      agentArgs: ["mcp", "serve"],
+      mcpCommand: "claude-mcp",
+    },
+  );
+});
+
 test("parseProfilePanelView accepts all profile panel subviews", () => {
   for (const view of [
     "summary",

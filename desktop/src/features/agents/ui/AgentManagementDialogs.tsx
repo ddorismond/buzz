@@ -35,7 +35,10 @@ export function AgentManagementDialogs() {
         />
       ) : null}
       {management.request?.action === "update" ? (
-        <AgentManagementUpdateDialog management={management} />
+        <AgentManagementUpdateDialog
+          key={management.request.requestId}
+          management={management}
+        />
       ) : null}
       <AgentCardDialogs />
     </>
@@ -47,7 +50,19 @@ function AgentManagementUpdateDialog({
 }: {
   management: ReturnType<typeof useAgentManagement>;
 }) {
-  const [runDraft, setRunDraft] = React.useState(emptyWhereToRunDraft);
+  const [runDraft, setRunDraft] = React.useState(() => {
+    const runOn =
+      management.request?.action === "update"
+        ? management.request.request.runOn
+        : undefined;
+    return runOn
+      ? {
+          runOn: runOn.providerId,
+          providerConfig: runOn.config,
+          probedProvider: null,
+        }
+      : emptyWhereToRunDraft;
+  });
 
   const managedAgent = management.currentManagedAgent;
   const canMigrateBackend = Boolean(

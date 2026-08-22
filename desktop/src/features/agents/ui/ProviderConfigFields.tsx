@@ -21,7 +21,7 @@ export function coerceConfigValues(
     } else if (schemaType === "boolean") {
       result[key] = value === "true";
     } else {
-      result[key] = value;
+      result[key] = schemaType === "string" ? value.trim() : value;
     }
   }
   return result;
