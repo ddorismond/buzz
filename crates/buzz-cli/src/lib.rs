@@ -293,6 +293,12 @@ pub enum AgentsCmd {
         provider: Option<String>,
         #[arg(long)]
         model: Option<String>,
+        /// Prefill the non-secret provider destination in the owner review
+        #[arg(long)]
+        run_on: Option<String>,
+        /// Prefill one provider config value (repeatable KEY=VALUE)
+        #[arg(long, value_name = "KEY=VALUE")]
+        run_config: Vec<String>,
         #[arg(long, value_enum)]
         respond_to: Option<RespondToArg>,
     },

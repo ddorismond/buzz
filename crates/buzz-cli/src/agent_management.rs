@@ -3,12 +3,21 @@
 use buzz_core::observer::{encrypt_observer_payload, OBSERVER_FRAME_TELEMETRY};
 use nostr::{Event, Keys, PublicKey};
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 use crate::error::CliError;
 
 const REQUEST_KIND: &str = "agent_management_request";
 const MAX_NAME_CHARS: usize = 120;
 const MAX_PROMPT_CHARS: usize = 20_000;
+const MAX_RUN_CONFIG_ENTRIES: usize = 64;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunTargetDraft {
+    pub provider_id: String,
+    pub config: BTreeMap<String, String>,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +42,8 @@ pub struct UpdateAgentDraft {
     pub provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_on: Option<RunTargetDraft>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub respond_to: Option<String>,
 }
@@ -82,6 +93,40 @@ fn required(value: String, label: &str, max: usize) -> Result<String, CliError> 
 
 fn optional(value: Option<String>, label: &str) -> Result<Option<String>, CliError> {
     value.map(|value| required(value, label, 300)).transpose()
+}
+
+pub fn parse_run_target(
+    provider_id: Option<String>,
+    entries: Vec<String>,
+) -> Result<Option<RunTargetDraft>, CliError> {
+    let Some(provider_id) = provider_id else {
+        if entries.is_empty() {
+            return Ok(None);
+        }
+        return Err(CliError::Usage("--run-config requires --run-on".into()));
+    };
+    if entries.len() > MAX_RUN_CONFIG_ENTRIES {
+        return Err(CliError::Usage(format!(
+            "too many --run-config values (max {MAX_RUN_CONFIG_ENTRIES})"
+        )));
+    }
+    let mut config = BTreeMap::new();
+    for entry in entries {
+        let (key, value) = entry
+            .split_once('=')
+            .ok_or_else(|| CliError::Usage("--run-config must use KEY=VALUE".into()))?;
+        let key = required(key.to_owned(), "run config key", 120)?;
+        let value = required(value.to_owned(), "run config value", 1_000)?;
+        if config.insert(key.clone(), value).is_some() {
+            return Err(CliError::Usage(format!(
+                "duplicate --run-config key: {key}"
+            )));
+        }
+    }
+    Ok(Some(RunTargetDraft {
+        provider_id: required(provider_id, "run-on provider", 120)?,
+        config,
+    }))
 }
 
 fn build<T: Serialize>(
@@ -169,6 +214,7 @@ pub fn build_update(
         runtime: optional(draft.runtime, "runtime")?,
         provider: optional(draft.provider, "provider")?,
         model: optional(draft.model, "model")?,
+        run_on: draft.run_on,
         respond_to,
     };
     if request.display_name.is_none()
@@ -176,6 +222,7 @@ pub fn build_update(
         && request.runtime.is_none()
         && request.provider.is_none()
         && request.model.is_none()
+        && request.run_on.is_none()
         && request.respond_to.is_none()
     {
         return Err(CliError::Usage(
@@ -253,11 +300,61 @@ mod tests {
                 runtime: None,
                 provider: None,
                 model: None,
+                run_on: None,
                 respond_to: None,
             },
         )
         .unwrap_err();
         assert!(error.to_string().contains("at least one field"));
+    }
+
+    #[test]
+    fn update_encrypts_a_normalized_provider_prefill() {
+        let agent = Keys::generate();
+        let owner = Keys::generate();
+        let built = build_update(
+            &agent,
+            &owner.public_key(),
+            UpdateAgentDraft {
+                channel_id: CHANNEL.into(),
+                agent_name: "agentos".into(),
+                display_name: None,
+                system_prompt: None,
+                runtime: None,
+                provider: None,
+                model: None,
+                run_on: parse_run_target(
+                    Some(" kubernetes ".into()),
+                    vec![
+                        "namespace= buzz-agents-pilot ".into(),
+                        "memory_request=512Mi".into(),
+                    ],
+                )
+                .unwrap(),
+                respond_to: None,
+            },
+        )
+        .unwrap();
+
+        let payload: serde_json::Value = decrypt_observer_payload(&owner, &built.event).unwrap();
+        assert_eq!(
+            payload["payload"]["request"]["runOn"]["providerId"],
+            "kubernetes"
+        );
+        assert_eq!(
+            payload["payload"]["request"]["runOn"]["config"]["namespace"],
+            "buzz-agents-pilot"
+        );
+    }
+
+    #[test]
+    fn run_config_requires_a_provider_and_unique_keys() {
+        assert!(parse_run_target(None, vec!["namespace=pilot".into()]).is_err());
+        assert!(parse_run_target(
+            Some("kubernetes".into()),
+            vec!["namespace=one".into(), "namespace=two".into()],
+        )
+        .is_err());
     }
 
     #[test]

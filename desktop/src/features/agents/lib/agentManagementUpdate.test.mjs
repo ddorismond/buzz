@@ -74,18 +74,32 @@ test("combines linked profile synchronization and provider migration in one inst
           workspace_storage: "5Gi",
         },
       },
-      managedAgent: agent(),
+      managedAgent: agent({
+        agentCommand: "claude-agent-acp",
+        agentArgs: ["--old"],
+        mcpCommand: "claude-mcp",
+      }),
       persona: persona(),
       previousPersona: persona({
         systemPrompt: "Old prompt",
         model: "old-model",
       }),
-      runtimes: [],
+      runtimes: [
+        {
+          id: "codex-acp",
+          command: "codex-agent-acp",
+          defaultArgs: [],
+          mcpCommand: "codex-mcp",
+        },
+      ],
     }),
     {
       pubkey: "deadbeef".repeat(8),
       systemPrompt: "New prompt",
       model: "gpt-5.6-sol",
+      agentCommand: "codex-agent-acp",
+      agentArgs: [],
+      mcpCommand: "codex-mcp",
       backend: {
         type: "provider",
         id: "kubernetes",

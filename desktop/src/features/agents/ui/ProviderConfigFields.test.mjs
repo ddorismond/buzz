@@ -28,4 +28,10 @@ describe("coerceConfigValues", () => {
       { inactivity_seconds: "not-a-number" },
     );
   });
+
+  it("trims schema-declared strings before provider persistence", () => {
+    assert.deepEqual(coerceConfigValues({ label: "  pilot  " }, schema), {
+      label: "pilot",
+    });
+  });
 });

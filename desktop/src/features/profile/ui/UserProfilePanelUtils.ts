@@ -280,6 +280,7 @@ export function personaManagedAgentUpdate(
   options: {
     previousPersona?: AgentPersona;
     runtimes?: readonly AcpRuntimeCatalogEntry[];
+    forceRuntimeSync?: boolean;
   } = {},
 ): UpdateManagedAgentInput | null {
   if (agent.personaId !== persona.id) return null;
@@ -324,8 +325,9 @@ export function personaManagedAgentUpdate(
   }
 
   const runtimeChanged =
-    options.previousPersona !== undefined &&
-    options.previousPersona.runtime !== persona.runtime;
+    options.forceRuntimeSync === true ||
+    (options.previousPersona !== undefined &&
+      options.previousPersona.runtime !== persona.runtime);
   const runtime = runtimeChanged
     ? options.runtimes?.find((candidate) => candidate.id === persona.runtime)
     : undefined;
