@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   agentManagementInstanceUpdate,
+  canReviewAgentManagementBackend,
   validateAgentManagementBackendEdit,
 } from "./agentManagementUpdate.ts";
 
@@ -150,5 +151,94 @@ test("migration validation fails closed before a partial profile save", () => {
       nextName: "agentos renamed",
     }),
     "Keep the current agent name during migration; rename it in a separate review.",
+  );
+});
+
+test("a stopped provider-backed agent can reapply only its current provider", () => {
+  const managedAgent = agent({
+    backend: {
+      type: "provider",
+      id: "kubernetes",
+      config: { namespace: "buzz-agents-pilot" },
+    },
+  });
+  assert.equal(
+    validateAgentManagementBackendEdit({
+      backendIntent: {
+        type: "provider",
+        id: "kubernetes",
+        config: { namespace: "buzz-agents-pilot" },
+      },
+      managedAgent,
+      nextName: "agentos",
+    }),
+    null,
+  );
+  assert.equal(
+    validateAgentManagementBackendEdit({
+      backendIntent: {
+        type: "provider",
+        id: "another-provider",
+        config: {},
+      },
+      managedAgent,
+      nextName: "agentos",
+    }),
+    "Provider-backed agents can only reapply their current provider.",
+  );
+  assert.equal(
+    validateAgentManagementBackendEdit({
+      backendIntent: {
+        type: "provider",
+        id: "kubernetes",
+        config: { namespace: "buzz-agents-pilot" },
+      },
+      managedAgent: agent({
+        status: "running",
+        pid: 42,
+        backend: managedAgent.backend,
+      }),
+      nextName: "agentos",
+    }),
+    "Stop this agent before changing where it runs.",
+  );
+});
+
+test("backend review opens only for stopped local migration or same-provider reapply", () => {
+  assert.equal(canReviewAgentManagementBackend(agent(), "kubernetes"), true);
+  assert.equal(canReviewAgentManagementBackend(agent(), undefined), true);
+  assert.equal(
+    canReviewAgentManagementBackend(
+      agent({
+        backend: { type: "provider", id: "kubernetes", config: {} },
+      }),
+      "kubernetes",
+    ),
+    true,
+  );
+  assert.equal(
+    canReviewAgentManagementBackend(
+      agent({
+        backend: { type: "provider", id: "kubernetes", config: {} },
+      }),
+      undefined,
+    ),
+    false,
+  );
+  assert.equal(
+    canReviewAgentManagementBackend(
+      agent({
+        backend: { type: "provider", id: "kubernetes", config: {} },
+      }),
+      "another-provider",
+    ),
+    false,
+  );
+  assert.equal(
+    canReviewAgentManagementBackend(
+      agent({ status: "running", pid: 42 }),
+      "kubernetes",
+    ),
+    false,
   );
 });

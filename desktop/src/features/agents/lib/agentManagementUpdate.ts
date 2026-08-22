@@ -8,6 +8,20 @@ import type {
 } from "@/shared/api/types";
 import { isManagedAgentActive } from "./managedAgentControlActions";
 
+export function canReviewAgentManagementBackend(
+  managedAgent: ManagedAgent | undefined,
+  requestedProviderId: string | undefined,
+): boolean {
+  if (!managedAgent || isManagedAgentActive(managedAgent)) {
+    return false;
+  }
+  if (managedAgent.backend.type === "local") return true;
+  return (
+    requestedProviderId !== undefined &&
+    managedAgent.backend.id === requestedProviderId
+  );
+}
+
 export function validateAgentManagementBackendEdit({
   backendIntent,
   managedAgent,
@@ -21,11 +35,14 @@ export function validateAgentManagementBackendEdit({
   if (!managedAgent) {
     return "This agent does not have one unique instance to migrate.";
   }
-  if (managedAgent.backend.type !== "local") {
-    return "Provider-backed agents cannot change run location yet.";
-  }
   if (isManagedAgentActive(managedAgent)) {
     return "Stop this agent before changing where it runs.";
+  }
+  if (
+    managedAgent.backend.type === "provider" &&
+    managedAgent.backend.id !== backendIntent.id
+  ) {
+    return "Provider-backed agents can only reapply their current provider.";
   }
   if (nextName.trim() !== managedAgent.name) {
     return "Keep the current agent name during migration; rename it in a separate review.";
