@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { useAgentManagement } from "@/features/agents/useAgentManagement";
 import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
+import { canReviewAgentManagementBackend } from "@/features/agents/lib/agentManagementUpdate";
 import { AgentCardDialogs } from "./AgentCardViewerDialog";
 import { AgentDialog } from "./AgentDialog";
 import { RunOnSummarySection } from "./RunOnSummarySection";
@@ -65,15 +66,20 @@ function AgentManagementUpdateDialog({
   });
 
   const managedAgent = management.currentManagedAgent;
-  const canMigrateBackend = Boolean(
-    managedAgent?.backend.type === "local" &&
-      !isManagedAgentActive(managedAgent),
+  const requestedRunOn =
+    management.request?.action === "update"
+      ? management.request.request.runOn
+      : undefined;
+  const canReviewBackend = canReviewAgentManagementBackend(
+    managedAgent,
+    requestedRunOn?.providerId,
   );
-  const backendIntent = canMigrateBackend
+  const backendIntent = canReviewBackend
     ? resolveBackendIntent(runDraft)
     : null;
+  const backendReviewBlocked = Boolean(requestedRunOn && !canReviewBackend);
   const editRunSection = managedAgent ? (
-    canMigrateBackend ? (
+    canReviewBackend ? (
       <div className="space-y-2" data-testid="agent-management-run-on">
         <WhereToRunSection
           draft={runDraft}
@@ -91,9 +97,13 @@ function AgentManagementUpdateDialog({
       <RunOnSummarySection
         backend={managedAgent.backend}
         migrationBlockedReason={
-          managedAgent.backend.type === "local"
+          requestedRunOn && isManagedAgentActive(managedAgent)
             ? "Stop this agent before changing where it runs."
-            : undefined
+            : requestedRunOn && managedAgent.backend.type === "provider"
+              ? "Provider-backed agents can only reapply their current provider."
+              : managedAgent.backend.type === "local"
+                ? "Stop this agent before changing where it runs."
+                : undefined
         }
       />
     )
@@ -104,7 +114,10 @@ function AgentManagementUpdateDialog({
       description=""
       error={management.editError ? new Error(management.editError) : null}
       editRunSection={editRunSection}
-      editSubmitBlocked={canMigrateBackend && !canSubmitWhereToRun(runDraft)}
+      editSubmitBlocked={
+        backendReviewBlocked ||
+        (canReviewBackend && !canSubmitWhereToRun(runDraft))
+      }
       initialValues={management.editInitialValues}
       isPending={management.isPending}
       mode="definition-edit"
