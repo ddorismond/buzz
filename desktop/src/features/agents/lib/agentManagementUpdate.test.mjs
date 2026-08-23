@@ -98,7 +98,9 @@ test("combines linked profile synchronization and provider migration in one inst
       pubkey: "deadbeef".repeat(8),
       systemPrompt: "New prompt",
       model: "gpt-5.6-sol",
-      agentCommand: "codex-agent-acp",
+      provider: "openai",
+      envVars: {},
+      agentCommand: "",
       agentArgs: [],
       mcpCommand: "codex-mcp",
       backend: {
@@ -108,6 +110,52 @@ test("combines linked profile synchronization and provider migration in one inst
           namespace: "buzz-agents-pilot",
           workspace_storage: "5Gi",
         },
+      },
+    },
+  );
+});
+
+test("provider reapply clears stale runtime hidden by effective summary projection", () => {
+  assert.deepEqual(
+    agentManagementInstanceUpdate({
+      backendIntent: {
+        type: "provider",
+        id: "kubernetes",
+        config: { namespace: "buzz-agents-pilot" },
+      },
+      managedAgent: agent({
+        // Summary values already project the edited persona even when the
+        // underlying provider instance record is stale.
+        agentCommand: "codex-acp",
+        agentArgs: [],
+        mcpCommand: "buzz-dev-mcp",
+        model: "gpt-5.6-sol",
+        provider: "openai",
+        systemPrompt: "New prompt",
+      }),
+      persona: persona({ runtime: "codex" }),
+      previousPersona: persona({ runtime: "codex" }),
+      runtimes: [
+        {
+          id: "codex",
+          command: "codex-acp",
+          defaultArgs: [],
+          mcpCommand: "buzz-dev-mcp",
+        },
+      ],
+    }),
+    {
+      pubkey: "deadbeef".repeat(8),
+      model: "gpt-5.6-sol",
+      provider: "openai",
+      envVars: {},
+      agentCommand: "",
+      agentArgs: [],
+      mcpCommand: "buzz-dev-mcp",
+      backend: {
+        type: "provider",
+        id: "kubernetes",
+        config: { namespace: "buzz-agents-pilot" },
       },
     },
   );
