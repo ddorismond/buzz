@@ -154,8 +154,9 @@ test("migration validation fails closed before a partial profile save", () => {
   );
 });
 
-test("a stopped provider-backed agent can reapply only its current provider", () => {
+test("an offline deployed agent can reapply only its current provider", () => {
   const managedAgent = agent({
+    status: "deployed",
     backend: {
       type: "provider",
       id: "kubernetes",
@@ -171,6 +172,7 @@ test("a stopped provider-backed agent can reapply only its current provider", ()
       },
       managedAgent,
       nextName: "agentos",
+      presence: { loaded: true, status: "offline" },
     }),
     null,
   );
@@ -183,6 +185,7 @@ test("a stopped provider-backed agent can reapply only its current provider", ()
       },
       managedAgent,
       nextName: "agentos",
+      presence: { loaded: true, status: "offline" },
     }),
     "Provider-backed agents can only reapply their current provider.",
   );
@@ -194,25 +197,40 @@ test("a stopped provider-backed agent can reapply only its current provider", ()
         config: { namespace: "buzz-agents-pilot" },
       },
       managedAgent: agent({
-        status: "running",
-        pid: 42,
+        status: "deployed",
         backend: managedAgent.backend,
       }),
       nextName: "agentos",
+      presence: { loaded: true, status: "online" },
     }),
-    "Stop this agent before changing where it runs.",
+    "Shut down this agent before changing where it runs.",
+  );
+  assert.equal(
+    validateAgentManagementBackendEdit({
+      backendIntent: {
+        type: "provider",
+        id: "kubernetes",
+        config: { namespace: "buzz-agents-pilot" },
+      },
+      managedAgent,
+      nextName: "agentos",
+      presence: { loaded: false },
+    }),
+    "Wait for remote presence to load before changing where this agent runs.",
   );
 });
 
-test("backend review opens only for stopped local migration or same-provider reapply", () => {
+test("backend review requires stopped local or confirmed-offline same-provider state", () => {
   assert.equal(canReviewAgentManagementBackend(agent(), "kubernetes"), true);
   assert.equal(canReviewAgentManagementBackend(agent(), undefined), true);
   assert.equal(
     canReviewAgentManagementBackend(
       agent({
+        status: "deployed",
         backend: { type: "provider", id: "kubernetes", config: {} },
       }),
       "kubernetes",
+      { loaded: true, status: "offline" },
     ),
     true,
   );
@@ -222,6 +240,7 @@ test("backend review opens only for stopped local migration or same-provider rea
         backend: { type: "provider", id: "kubernetes", config: {} },
       }),
       undefined,
+      { loaded: true, status: "offline" },
     ),
     false,
   );
@@ -231,6 +250,7 @@ test("backend review opens only for stopped local migration or same-provider rea
         backend: { type: "provider", id: "kubernetes", config: {} },
       }),
       "another-provider",
+      { loaded: true, status: "offline" },
     ),
     false,
   );
@@ -241,4 +261,21 @@ test("backend review opens only for stopped local migration or same-provider rea
     ),
     false,
   );
+  for (const presence of [
+    { loaded: false },
+    { loaded: true, status: "online" },
+    { loaded: true, status: "away" },
+  ]) {
+    assert.equal(
+      canReviewAgentManagementBackend(
+        agent({
+          status: "deployed",
+          backend: { type: "provider", id: "kubernetes", config: {} },
+        }),
+        "kubernetes",
+        presence,
+      ),
+      false,
+    );
+  }
 });

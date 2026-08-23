@@ -73,6 +73,10 @@ function AgentManagementUpdateDialog({
   const canReviewBackend = canReviewAgentManagementBackend(
     managedAgent,
     requestedRunOn?.providerId,
+    {
+      loaded: management.currentManagedAgentPresenceLoaded,
+      status: management.currentManagedAgentPresenceStatus,
+    },
   );
   const backendIntent = canReviewBackend
     ? resolveBackendIntent(runDraft)
@@ -97,10 +101,16 @@ function AgentManagementUpdateDialog({
       <RunOnSummarySection
         backend={managedAgent.backend}
         migrationBlockedReason={
-          requestedRunOn && isManagedAgentActive(managedAgent)
+          requestedRunOn &&
+          managedAgent.backend.type === "local" &&
+          isManagedAgentActive(managedAgent)
             ? "Stop this agent before changing where it runs."
             : requestedRunOn && managedAgent.backend.type === "provider"
-              ? "Provider-backed agents can only reapply their current provider."
+              ? managedAgent.backend.id !== requestedRunOn.providerId
+                ? "Provider-backed agents can only reapply their current provider."
+                : management.currentManagedAgentPresenceLoaded
+                  ? "Shut down this agent before changing where it runs."
+                  : "Checking remote presence before allowing changes."
               : managedAgent.backend.type === "local"
                 ? "Stop this agent before changing where it runs."
                 : undefined
