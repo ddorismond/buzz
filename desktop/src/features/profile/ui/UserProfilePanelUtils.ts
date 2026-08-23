@@ -287,6 +287,10 @@ export function personaManagedAgentUpdate(
 
   const input: UpdateManagedAgentInput = { pubkey: agent.pubkey };
   let hasChanges = false;
+  const runtimeChanged =
+    options.forceRuntimeSync === true ||
+    (options.previousPersona !== undefined &&
+      options.previousPersona.runtime !== persona.runtime);
 
   if (persona.displayName !== agent.name) {
     input.name = persona.displayName;
@@ -298,12 +302,17 @@ export function personaManagedAgentUpdate(
     hasChanges = true;
   }
 
-  if ((persona.model ?? null) !== (agent.model ?? null)) {
+  if (runtimeChanged || (persona.model ?? null) !== (agent.model ?? null)) {
     input.model = persona.model;
     hasChanges = true;
   }
 
-  if (!stringRecordEqual(persona.envVars, agent.envVars)) {
+  if (runtimeChanged) {
+    input.provider = persona.provider;
+    hasChanges = true;
+  }
+
+  if (runtimeChanged || !stringRecordEqual(persona.envVars, agent.envVars)) {
     input.envVars = persona.envVars;
     hasChanges = true;
   }
@@ -324,29 +333,19 @@ export function personaManagedAgentUpdate(
     hasChanges = true;
   }
 
-  const runtimeChanged =
-    options.forceRuntimeSync === true ||
-    (options.previousPersona !== undefined &&
-      options.previousPersona.runtime !== persona.runtime);
   const runtime = runtimeChanged
     ? options.runtimes?.find((candidate) => candidate.id === persona.runtime)
     : undefined;
   if (runtime?.command) {
-    if (runtime.command !== agent.agentCommand) {
-      input.agentCommand = runtime.command;
-      hasChanges = true;
-    }
-
-    if (!stringArrayEqual(runtime.defaultArgs, agent.agentArgs)) {
-      input.agentArgs = [...runtime.defaultArgs];
-      hasChanges = true;
-    }
-
-    const mcpCommand = runtime.mcpCommand ?? "";
-    if (mcpCommand !== agent.mcpCommand) {
-      input.mcpCommand = mcpCommand;
-      hasChanges = true;
-    }
+    // ManagedAgentSummary reports effective persona-backed values. During a
+    // repair that projection can already equal the edited persona while the
+    // stored instance snapshot is still stale. The empty command is the update
+    // API's inherit sentinel: it clears both an explicit pin and the record's
+    // materialized runtime so launch resolution falls through to the persona.
+    input.agentCommand = "";
+    input.agentArgs = [...runtime.defaultArgs];
+    input.mcpCommand = runtime.mcpCommand ?? "";
+    hasChanges = true;
   }
 
   return hasChanges ? input : null;
