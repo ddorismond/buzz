@@ -26,6 +26,7 @@ import {
 import { useCreatedAgentChannelAttachment } from "./useCreatedAgentChannelAttachment";
 import { classifyAgentManagementOrigin } from "./agentManagementBuffer";
 import { useChannelsQuery } from "@/features/channels/hooks";
+import { usePresenceQuery } from "@/features/presence/hooks";
 import { resolveManagedAgentAvatarUrl } from "./ui/managedAgentAvatar";
 import type { AgentCreateIntent } from "./ui/agentCreateIntent";
 import { editPersonaDialogState } from "./ui/personaDialogState";
@@ -38,6 +39,7 @@ import {
   agentManagementInstanceUpdate,
   validateAgentManagementBackendEdit,
 } from "./lib/agentManagementUpdate";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 
 function updateInputFromRequest(
   request: Extract<AgentManagementRequest, { action: "update" }>,
@@ -169,6 +171,14 @@ export function useAgentManagement() {
   );
   const currentManagedAgent =
     matchingManagedAgents.length === 1 ? matchingManagedAgents[0] : undefined;
+  const managementPresenceQuery = usePresenceQuery(
+    currentManagedAgent ? [currentManagedAgent.pubkey] : [],
+  );
+  const currentManagedAgentPresenceStatus = currentManagedAgent
+    ? managementPresenceQuery.data?.[
+        normalizePubkey(currentManagedAgent.pubkey)
+      ]
+    : undefined;
 
   const isPending =
     createPersonaMutation.isPending ||
@@ -266,6 +276,18 @@ export function useAgentManagement() {
     setError(null);
     try {
       assertAgentCanActFromOrigin(request.request.channelId);
+      let backendPresence = {
+        loaded: managementPresenceQuery.isSuccess,
+        status: currentManagedAgentPresenceStatus,
+      };
+      if (backendIntent && currentManagedAgent?.backend.type === "provider") {
+        const freshPresence = await managementPresenceQuery.refetch();
+        backendPresence = {
+          loaded: freshPresence.isSuccess,
+          status:
+            freshPresence.data?.[normalizePubkey(currentManagedAgent.pubkey)],
+        };
+      }
       const runtimeEditError = validateLinkedAgentRuntimeEdit({
         input,
         managedAgent: currentManagedAgent,
@@ -277,6 +299,7 @@ export function useAgentManagement() {
         backendIntent,
         managedAgent: currentManagedAgent,
         nextName: input.displayName,
+        presence: backendPresence,
       });
       if (backendEditError) throw new Error(backendEditError);
 
@@ -346,6 +369,8 @@ export function useAgentManagement() {
     editInitialValues,
     editError,
     currentManagedAgent,
+    currentManagedAgentPresenceLoaded: managementPresenceQuery.isSuccess,
+    currentManagedAgentPresenceStatus,
     error,
     ...createdAgentAttachment,
     isPending,

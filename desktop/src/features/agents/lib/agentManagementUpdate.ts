@@ -4,21 +4,33 @@ import type {
   AcpRuntimeCatalogEntry,
   AgentPersona,
   ManagedAgent,
+  PresenceStatus,
   UpdateManagedAgentInput,
 } from "@/shared/api/types";
-import { isManagedAgentActive } from "./managedAgentControlActions";
+import {
+  isManagedAgentActive,
+  isManagedAgentLive,
+} from "./managedAgentControlActions";
+
+export type AgentManagementPresenceState = {
+  loaded: boolean;
+  status?: PresenceStatus;
+};
 
 export function canReviewAgentManagementBackend(
   managedAgent: ManagedAgent | undefined,
   requestedProviderId: string | undefined,
+  presence: AgentManagementPresenceState = { loaded: false },
 ): boolean {
-  if (!managedAgent || isManagedAgentActive(managedAgent)) {
-    return false;
+  if (!managedAgent) return false;
+  if (managedAgent.backend.type === "local") {
+    return !isManagedAgentActive(managedAgent);
   }
-  if (managedAgent.backend.type === "local") return true;
   return (
     requestedProviderId !== undefined &&
-    managedAgent.backend.id === requestedProviderId
+    managedAgent.backend.id === requestedProviderId &&
+    presence.loaded &&
+    !isManagedAgentLive(managedAgent, presence.status)
   );
 }
 
@@ -26,23 +38,33 @@ export function validateAgentManagementBackendEdit({
   backendIntent,
   managedAgent,
   nextName,
+  presence = { loaded: false },
 }: {
   backendIntent: BackendIntent | null;
   managedAgent: ManagedAgent | undefined;
   nextName: string;
+  presence?: AgentManagementPresenceState;
 }): string | null {
   if (!backendIntent) return null;
   if (!managedAgent) {
     return "This agent does not have one unique instance to migrate.";
   }
-  if (isManagedAgentActive(managedAgent)) {
+  if (
+    managedAgent.backend.type === "local" &&
+    isManagedAgentActive(managedAgent)
+  ) {
     return "Stop this agent before changing where it runs.";
   }
-  if (
-    managedAgent.backend.type === "provider" &&
-    managedAgent.backend.id !== backendIntent.id
-  ) {
-    return "Provider-backed agents can only reapply their current provider.";
+  if (managedAgent.backend.type === "provider") {
+    if (managedAgent.backend.id !== backendIntent.id) {
+      return "Provider-backed agents can only reapply their current provider.";
+    }
+    if (!presence.loaded) {
+      return "Wait for remote presence to load before changing where this agent runs.";
+    }
+    if (isManagedAgentLive(managedAgent, presence.status)) {
+      return "Shut down this agent before changing where it runs.";
+    }
   }
   if (nextName.trim() !== managedAgent.name) {
     return "Keep the current agent name during migration; rename it in a separate review.";
